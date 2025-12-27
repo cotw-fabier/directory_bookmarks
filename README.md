@@ -8,11 +8,11 @@ A Flutter plugin for cross-platform directory bookmarking and secure file operat
 |----------|--------|----------------------|
 | macOS    | Supported | Security-scoped bookmarks for persistent directory access |
 | Android  | In Development | Storage Access Framework (partial implementation) |
+| Linux    | Supported | XDG config directory for persistent access |
 | iOS      | Planned | Will use security-scoped bookmarks |
 | Windows  | Planned | Future implementation |
-| Linux    | Planned | Future implementation |
 
-> **Note**: Currently, this package is primarily focused on macOS support. Using it on other platforms will result in unsupported platform errors. We are actively working on expanding platform support.
+> **Note**: This package currently supports macOS and Linux platforms with full functionality. Android support is in development. Using it on iOS or Windows will result in unsupported platform errors. We are actively working on expanding platform support.
 
 ## Features
 
@@ -75,9 +75,22 @@ Add the following permissions to your `AndroidManifest.xml`:
 <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 ```
 
+#### Linux (Supported)
+
+No special setup required for standard desktop applications. The plugin uses the XDG config directory (`~/.config/directory_bookmarks/`) for persistent bookmark storage and standard filesystem operations.
+
+**Features:**
+- Direct filesystem access for regular desktop apps
+- Bookmark persistence in XDG-compliant config directory
+- Standard POSIX permission checking
+- Automatic directory creation for config files
+
+**Future Enhancement:**
+For Flatpak/Snap apps (sandboxed environments), XDG Desktop Portal integration is planned for a future release to enable persistent directory access in sandboxed environments.
+
 #### Other Platforms (Planned)
 
-Support for iOS, Windows, and Linux is planned for future releases. Using this package on these platforms will currently result in an UnsupportedError.
+Support for iOS and Windows is planned for future releases. Using this package on these platforms will currently result in an UnsupportedError.
 
 ## API Reference
 
@@ -190,7 +203,8 @@ import 'package:directory_bookmarks/directory_bookmarks.dart';
 void main() async {
   // Check platform support
   if (!(defaultTargetPlatform == TargetPlatform.macOS ||
-        defaultTargetPlatform == TargetPlatform.android)) {
+        defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.linux)) {
     print('Platform not supported');
     return;
   }
@@ -266,7 +280,8 @@ The plugin includes comprehensive error handling:
 try {
   // Check platform support first
   if (!(defaultTargetPlatform == TargetPlatform.macOS ||
-        defaultTargetPlatform == TargetPlatform.android)) {
+        defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.linux)) {
     print('Platform ${defaultTargetPlatform.name} is not supported yet');
     return;
   }

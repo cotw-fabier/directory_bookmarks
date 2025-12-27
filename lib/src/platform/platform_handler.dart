@@ -13,14 +13,15 @@ abstract class PlatformHandler {
       throw UnsupportedError(
           'Platform ${defaultTargetPlatform.name} is not supported yet. '
           'Currently supported platforms: macOS (full support), '
-          'Android (partial support).');
+          'Android (partial support), Linux (full support).');
     }
   }
 
   /// Check if the current platform is supported
   static bool get _isPlatformSupported {
     return defaultTargetPlatform == TargetPlatform.macOS ||
-        defaultTargetPlatform == TargetPlatform.android;
+        defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.linux;
   }
 
   /// Save a directory bookmark
