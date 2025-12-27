@@ -3,55 +3,74 @@ import FlutterMacOS
 
 class DirectoryBookmarkHandler: NSObject {
     static let shared = DirectoryBookmarkHandler()
-    private let bookmarkKey = "SavedDirectoryBookmark"
-    private var currentAccessedURL: URL?
-    
+
+    // Storage keys
+    private let bookmarksKey = "DirectoryBookmarks"
+    private let metadataKey = "DirectoryBookmarksMetadata"
+
+    // Resource management
+    private var accessedURLs: [String: URL] = [:]
+    private var lastAccessTime: [String: Date] = [:]
+    private let maxActiveBookmarks = 5
+    private let accessTimeout: TimeInterval = 300 // 5 minutes
+
     deinit {
-        stopAccessingCurrentURL()
+        stopAccessingAllURLs()
     }
-    
-    private func stopAccessingCurrentURL() {
-        if let url = currentAccessedURL {
+
+    // MARK: - Resource Management
+
+    private func stopAccessingAllURLs() {
+        for (_, url) in accessedURLs {
             url.stopAccessingSecurityScopedResource()
-            currentAccessedURL = nil
+        }
+        accessedURLs.removeAll()
+        lastAccessTime.removeAll()
+    }
+
+    private func stopAccessingURL(id: String) {
+        if let url = accessedURLs[id] {
+            url.stopAccessingSecurityScopedResource()
+            accessedURLs.removeValue(forKey: id)
+            lastAccessTime.removeValue(forKey: id)
         }
     }
-    
-    func saveDirectoryBookmark(path: String) -> Bool {
-        let url = URL(fileURLWithPath: path)
-        
-        // Verify directory exists and is accessible
-        guard url.isDirectory else {
-            print("Path is not a directory or is not accessible")
-            return false
+
+    private func cleanupLeastRecentlyUsed() {
+        guard let (lruId, _) = lastAccessTime.min(by: { $0.value < $1.value }) else {
+            return
         }
-        
-        do {
-            // Create security-scoped bookmark
-            let bookmarkData = try url.bookmarkData(
-                options: [.withSecurityScope],
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            )
-            
-            // Save bookmark data
-            UserDefaults.standard.set(bookmarkData, forKey: bookmarkKey)
-            return true
-        } catch {
-            print("Failed to create bookmark: \(error)")
-            return false
-        }
+        stopAccessingURL(id: lruId)
     }
-    
-    func resolveBookmark() -> URL? {
-        // Stop accessing previous URL if any
-        stopAccessingCurrentURL()
-        
-        guard let bookmarkData = UserDefaults.standard.data(forKey: bookmarkKey) else {
-            print("No bookmark data found")
+
+    private func ensureBookmarkAccessed(id: String) -> URL? {
+        // If already accessed and valid, return it
+        if let url = accessedURLs[id], url.isDirectory {
+            lastAccessTime[id] = Date()
+            return url
+        }
+
+        // Need to activate - check limit
+        if accessedURLs.count >= maxActiveBookmarks {
+            cleanupLeastRecentlyUsed()
+        }
+
+        // Resolve and start accessing
+        guard let url = resolveAndStartAccessing(id: id) else {
             return nil
         }
-        
+
+        accessedURLs[id] = url
+        lastAccessTime[id] = Date()
+        return url
+    }
+
+    private func resolveAndStartAccessing(id: String) -> URL? {
+        guard let bookmarkData = loadBookmarkData(id: id) else {
+            print("No bookmark data found for id: \(id)")
+            return nil
+        }
+
         do {
             var isStale = false
             let url = try URL(
@@ -60,45 +79,206 @@ class DirectoryBookmarkHandler: NSObject {
                 relativeTo: nil,
                 bookmarkDataIsStale: &isStale
             )
-            
+
             // Start accessing the security-scoped resource
             if !url.startAccessingSecurityScopedResource() {
-                print("Failed to start accessing security-scoped resource")
+                print("Failed to start accessing security-scoped resource for id: \(id)")
                 return nil
             }
-            
-            // Store the current accessed URL
-            currentAccessedURL = url
-            
+
             // Verify the URL still exists and is a directory
             guard url.isDirectory else {
-                print("Bookmarked path no longer exists or is not a directory")
-                stopAccessingCurrentURL()
+                print("Bookmarked path no longer exists or is not a directory for id: \(id)")
+                url.stopAccessingSecurityScopedResource()
                 return nil
             }
-            
+
             if isStale {
-                print("Bookmark is stale, attempting to recreate")
-                if saveDirectoryBookmark(path: url.path) {
+                print("Bookmark is stale for id: \(id), attempting to recreate")
+                if createBookmark(identifier: id, path: url.path, metadata: loadMetadata(id: id)) {
                     return url
                 }
-                stopAccessingCurrentURL()
+                url.stopAccessingSecurityScopedResource()
                 return nil
             }
-            
+
             return url
         } catch {
-            print("Failed to resolve bookmark: \(error)")
+            print("Failed to resolve bookmark for id \(id): \(error)")
             return nil
         }
     }
-    
-    func saveFile(fileName: String, data: FlutterStandardTypedData) -> Bool {
-        guard let url = currentAccessedURL ?? resolveBookmark() else {
-            print("No valid bookmark found")
+
+    // MARK: - Storage
+
+    private func loadAllBookmarksData() -> [String: Data] {
+        return UserDefaults.standard.dictionary(forKey: bookmarksKey) as? [String: Data] ?? [:]
+    }
+
+    private func saveAllBookmarksData(_ bookmarks: [String: Data]) {
+        UserDefaults.standard.set(bookmarks, forKey: bookmarksKey)
+    }
+
+    private func loadBookmarkData(id: String) -> Data? {
+        let allBookmarks = loadAllBookmarksData()
+        return allBookmarks[id]
+    }
+
+    private func loadAllMetadata() -> [String: [String: Any]] {
+        return UserDefaults.standard.dictionary(forKey: metadataKey) as? [String: [String: Any]] ?? [:]
+    }
+
+    private func saveAllMetadata(_ metadata: [String: [String: Any]]) {
+        UserDefaults.standard.set(metadata, forKey: metadataKey)
+    }
+
+    private func loadMetadata(id: String) -> [String: Any]? {
+        let allMetadata = loadAllMetadata()
+        return allMetadata[id]
+    }
+
+    // MARK: - Bookmark Management
+
+    func createBookmark(identifier: String, path: String, metadata: [String: Any]?) -> Bool {
+        let url = URL(fileURLWithPath: path)
+
+        // Verify directory exists and is accessible
+        guard url.isDirectory else {
+            print("Path is not a directory or is not accessible")
             return false
         }
-        
+
+        do {
+            // Create security-scoped bookmark
+            let bookmarkData = try url.bookmarkData(
+                options: [.withSecurityScope],
+                includingResourceValuesForKeys: nil,
+                relativeTo: nil
+            )
+
+            // Save bookmark data
+            var allBookmarks = loadAllBookmarksData()
+            allBookmarks[identifier] = bookmarkData
+            saveAllBookmarksData(allBookmarks)
+
+            // Save metadata
+            var allMetadata = loadAllMetadata()
+            let timestamp = ISO8601DateFormatter().string(from: Date())
+            var bookmarkMetadata: [String: Any] = [
+                "createdAt": timestamp,
+                "path": path
+            ]
+            if let customMetadata = metadata {
+                bookmarkMetadata["metadata"] = customMetadata
+            }
+            allMetadata[identifier] = bookmarkMetadata
+            saveAllMetadata(allMetadata)
+
+            return true
+        } catch {
+            print("Failed to create bookmark: \(error)")
+            return false
+        }
+    }
+
+    func listBookmarks() -> [[String: Any]] {
+        let allBookmarks = loadAllBookmarksData()
+        let allMetadata = loadAllMetadata()
+
+        var result: [[String: Any]] = []
+
+        for (id, _) in allBookmarks {
+            if let metadata = allMetadata[id] {
+                var bookmarkInfo: [String: Any] = [
+                    "identifier": id,
+                    "path": metadata["path"] ?? "",
+                    "createdAt": metadata["createdAt"] ?? ""
+                ]
+                if let customMetadata = metadata["metadata"] as? [String: Any] {
+                    bookmarkInfo["metadata"] = customMetadata
+                } else {
+                    bookmarkInfo["metadata"] = [:]
+                }
+                result.append(bookmarkInfo)
+            }
+        }
+
+        return result
+    }
+
+    func getBookmark(identifier: String) -> [String: Any]? {
+        let allBookmarks = loadAllBookmarksData()
+        let allMetadata = loadAllMetadata()
+
+        guard allBookmarks[identifier] != nil else {
+            return nil
+        }
+
+        if let metadata = allMetadata[identifier] {
+            var bookmarkInfo: [String: Any] = [
+                "identifier": identifier,
+                "path": metadata["path"] ?? "",
+                "createdAt": metadata["createdAt"] ?? ""
+            ]
+            if let customMetadata = metadata["metadata"] as? [String: Any] {
+                bookmarkInfo["metadata"] = customMetadata
+            } else {
+                bookmarkInfo["metadata"] = [:]
+            }
+            return bookmarkInfo
+        }
+
+        return nil
+    }
+
+    func bookmarkExists(identifier: String) -> Bool {
+        let allBookmarks = loadAllBookmarksData()
+        return allBookmarks[identifier] != nil
+    }
+
+    func deleteBookmark(identifier: String) -> Bool {
+        // Stop accessing if currently active
+        stopAccessingURL(id: identifier)
+
+        // Remove from storage
+        var allBookmarks = loadAllBookmarksData()
+        var allMetadata = loadAllMetadata()
+
+        guard allBookmarks.removeValue(forKey: identifier) != nil else {
+            return false
+        }
+
+        allMetadata.removeValue(forKey: identifier)
+
+        saveAllBookmarksData(allBookmarks)
+        saveAllMetadata(allMetadata)
+
+        return true
+    }
+
+    func updateBookmarkMetadata(identifier: String, metadata: [String: Any]) -> Bool {
+        var allMetadata = loadAllMetadata()
+
+        guard var existingMetadata = allMetadata[identifier] else {
+            return false
+        }
+
+        existingMetadata["metadata"] = metadata
+        allMetadata[identifier] = existingMetadata
+
+        saveAllMetadata(allMetadata)
+
+        return true
+    }
+
+    // MARK: - File Operations
+
+    func saveFile(bookmarkId: String, fileName: String, data: FlutterStandardTypedData) -> Bool {
+        guard let url = ensureBookmarkAccessed(id: bookmarkId) else {
+            print("No valid bookmark found for id: \(bookmarkId)")
+            return false
+        }
+
         do {
             let fileURL = url.appendingPathComponent(fileName)
             try data.data.write(to: fileURL)
@@ -108,13 +288,13 @@ class DirectoryBookmarkHandler: NSObject {
             return false
         }
     }
-    
-    func readFile(fileName: String) -> FlutterStandardTypedData? {
-        guard let url = currentAccessedURL ?? resolveBookmark() else {
-            print("No valid bookmark found")
+
+    func readFile(bookmarkId: String, fileName: String) -> FlutterStandardTypedData? {
+        guard let url = ensureBookmarkAccessed(id: bookmarkId) else {
+            print("No valid bookmark found for id: \(bookmarkId)")
             return nil
         }
-        
+
         do {
             let fileURL = url.appendingPathComponent(fileName)
             let data = try Data(contentsOf: fileURL)
@@ -124,13 +304,13 @@ class DirectoryBookmarkHandler: NSObject {
             return nil
         }
     }
-    
-    func listFiles() -> [String]? {
-        guard let url = currentAccessedURL ?? resolveBookmark() else {
-            print("No valid bookmark found")
+
+    func listFiles(bookmarkId: String) -> [String]? {
+        guard let url = ensureBookmarkAccessed(id: bookmarkId) else {
+            print("No valid bookmark found for id: \(bookmarkId)")
             return nil
         }
-        
+
         do {
             let contents = try FileManager.default.contentsOfDirectory(
                 at: url,
@@ -145,12 +325,37 @@ class DirectoryBookmarkHandler: NSObject {
             return nil
         }
     }
-    
-    func hasWritePermission() -> Bool {
-        guard let url = currentAccessedURL ?? resolveBookmark() else {
+
+    func deleteFile(bookmarkId: String, fileName: String) -> Bool {
+        guard let url = ensureBookmarkAccessed(id: bookmarkId) else {
+            print("No valid bookmark found for id: \(bookmarkId)")
             return false
         }
-        
+
+        do {
+            let fileURL = url.appendingPathComponent(fileName)
+            try FileManager.default.removeItem(at: fileURL)
+            return true
+        } catch {
+            print("Failed to delete file: \(error)")
+            return false
+        }
+    }
+
+    func fileExists(bookmarkId: String, fileName: String) -> Bool {
+        guard let url = ensureBookmarkAccessed(id: bookmarkId) else {
+            return false
+        }
+
+        let fileURL = url.appendingPathComponent(fileName)
+        return FileManager.default.fileExists(atPath: fileURL.path)
+    }
+
+    func hasWritePermission(bookmarkId: String) -> Bool {
+        guard let url = ensureBookmarkAccessed(id: bookmarkId) else {
+            return false
+        }
+
         return FileManager.default.isWritableFile(atPath: url.path)
     }
 }

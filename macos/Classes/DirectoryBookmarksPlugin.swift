@@ -22,100 +22,248 @@ public class DirectoryBookmarksPlugin: NSObject, FlutterPlugin {
     
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
-        case "saveDirectoryBookmark":
+        // MARK: - Bookmark Management
+        case "createBookmark":
             guard let args = call.arguments as? [String: Any],
+                  let identifier = args["identifier"] as? String,
                   let path = args["path"] as? String else {
                 result(FlutterError(
-                    code: "INVALID_ARGUMENTS",
-                    message: "Invalid arguments for saveDirectoryBookmark",
-                    details: "Required arguments: path (String)"
+                    code: "INVALID_ARGUMENT",
+                    message: "Invalid arguments for createBookmark",
+                    details: "Required arguments: identifier (String), path (String)"
                 ))
                 return
             }
-            
-            let success = bookmarkHandler.saveDirectoryBookmark(path: path)
-            if success {
-                result(true)
-            } else {
+
+            // Check if bookmark already exists
+            if bookmarkHandler.bookmarkExists(identifier: identifier) {
                 result(FlutterError(
-                    code: "SAVE_ERROR",
-                    message: "Failed to save directory bookmark",
-                    details: "Could not create security-scoped bookmark for path: \(path)"
+                    code: "BOOKMARK_ALREADY_EXISTS",
+                    message: "Bookmark with identifier '\(identifier)' already exists",
+                    details: nil
                 ))
+                return
             }
-            
-        case "resolveDirectoryBookmark":
-            if let url = bookmarkHandler.resolveBookmark() {
-                result([
-                    "path": url.path,
-                    "createdAt": Date().iso8601String,
-                    "metadata": [:] as [String: Any]
-                ])
+
+            let metadata = args["metadata"] as? [String: Any]
+            let success = bookmarkHandler.createBookmark(identifier: identifier, path: path, metadata: metadata)
+            if success {
+                result(identifier)
             } else {
                 result(nil)
             }
-            
+
+        case "listBookmarks":
+            let bookmarks = bookmarkHandler.listBookmarks()
+            result(bookmarks)
+
+        case "getBookmark":
+            guard let args = call.arguments as? [String: Any],
+                  let identifier = args["identifier"] as? String else {
+                result(FlutterError(
+                    code: "INVALID_ARGUMENT",
+                    message: "Invalid arguments for getBookmark",
+                    details: "Required arguments: identifier (String)"
+                ))
+                return
+            }
+
+            if let bookmark = bookmarkHandler.getBookmark(identifier: identifier) {
+                result(bookmark)
+            } else {
+                result(nil)
+            }
+
+        case "bookmarkExists":
+            guard let args = call.arguments as? [String: Any],
+                  let identifier = args["identifier"] as? String else {
+                result(FlutterError(
+                    code: "INVALID_ARGUMENT",
+                    message: "Invalid arguments for bookmarkExists",
+                    details: "Required arguments: identifier (String)"
+                ))
+                return
+            }
+
+            result(bookmarkHandler.bookmarkExists(identifier: identifier))
+
+        case "deleteBookmark":
+            guard let args = call.arguments as? [String: Any],
+                  let identifier = args["identifier"] as? String else {
+                result(FlutterError(
+                    code: "INVALID_ARGUMENT",
+                    message: "Invalid arguments for deleteBookmark",
+                    details: "Required arguments: identifier (String)"
+                ))
+                return
+            }
+
+            result(bookmarkHandler.deleteBookmark(identifier: identifier))
+
+        case "updateBookmarkMetadata":
+            guard let args = call.arguments as? [String: Any],
+                  let identifier = args["identifier"] as? String,
+                  let metadata = args["metadata"] as? [String: Any] else {
+                result(FlutterError(
+                    code: "INVALID_ARGUMENT",
+                    message: "Invalid arguments for updateBookmarkMetadata",
+                    details: "Required arguments: identifier (String), metadata (Map)"
+                ))
+                return
+            }
+
+            result(bookmarkHandler.updateBookmarkMetadata(identifier: identifier, metadata: metadata))
+
+        // MARK: - File Operations
         case "saveFile":
             guard let args = call.arguments as? [String: Any],
+                  let identifier = args["identifier"] as? String,
                   let fileName = args["fileName"] as? String,
                   let data = args["data"] as? FlutterStandardTypedData else {
                 result(FlutterError(
-                    code: "INVALID_ARGUMENTS",
+                    code: "INVALID_ARGUMENT",
                     message: "Invalid arguments for saveFile",
-                    details: "Required arguments: fileName (String), data (Uint8List)"
+                    details: "Required arguments: identifier (String), fileName (String), data (Uint8List)"
                 ))
                 return
             }
-            
-            let success = bookmarkHandler.saveFile(fileName: fileName, data: data)
-            if success {
-                result(true)
-            } else {
+
+            if !bookmarkHandler.bookmarkExists(identifier: identifier) {
                 result(FlutterError(
-                    code: "SAVE_ERROR",
-                    message: "Failed to save file",
-                    details: "Could not write file: \(fileName)"
+                    code: "BOOKMARK_NOT_FOUND",
+                    message: "Bookmark with identifier '\(identifier)' not found",
+                    details: nil
                 ))
+                return
             }
-            
+
+            let success = bookmarkHandler.saveFile(bookmarkId: identifier, fileName: fileName, data: data)
+            result(success)
+
         case "readFile":
             guard let args = call.arguments as? [String: Any],
+                  let identifier = args["identifier"] as? String,
                   let fileName = args["fileName"] as? String else {
                 result(FlutterError(
-                    code: "INVALID_ARGUMENTS",
+                    code: "INVALID_ARGUMENT",
                     message: "Invalid arguments for readFile",
-                    details: "Required arguments: fileName (String)"
+                    details: "Required arguments: identifier (String), fileName (String)"
                 ))
                 return
             }
-            
-            if let data = bookmarkHandler.readFile(fileName: fileName) {
-                result(data)
-            } else {
+
+            if !bookmarkHandler.bookmarkExists(identifier: identifier) {
                 result(FlutterError(
-                    code: "READ_ERROR",
-                    message: "Failed to read file",
-                    details: "Could not read file: \(fileName)"
+                    code: "BOOKMARK_NOT_FOUND",
+                    message: "Bookmark with identifier '\(identifier)' not found",
+                    details: nil
                 ))
+                return
             }
-            
+
+            result(bookmarkHandler.readFile(bookmarkId: identifier, fileName: fileName))
+
         case "listFiles":
-            if let files = bookmarkHandler.listFiles() {
-                result(files)
-            } else {
+            guard let args = call.arguments as? [String: Any],
+                  let identifier = args["identifier"] as? String else {
                 result(FlutterError(
-                    code: "LIST_ERROR",
-                    message: "Failed to list files",
-                    details: "Could not list files in bookmarked directory"
+                    code: "INVALID_ARGUMENT",
+                    message: "Invalid arguments for listFiles",
+                    details: "Required arguments: identifier (String)"
                 ))
+                return
             }
-            
+
+            if !bookmarkHandler.bookmarkExists(identifier: identifier) {
+                result(FlutterError(
+                    code: "BOOKMARK_NOT_FOUND",
+                    message: "Bookmark with identifier '\(identifier)' not found",
+                    details: nil
+                ))
+                return
+            }
+
+            result(bookmarkHandler.listFiles(bookmarkId: identifier))
+
+        case "deleteFile":
+            guard let args = call.arguments as? [String: Any],
+                  let identifier = args["identifier"] as? String,
+                  let fileName = args["fileName"] as? String else {
+                result(FlutterError(
+                    code: "INVALID_ARGUMENT",
+                    message: "Invalid arguments for deleteFile",
+                    details: "Required arguments: identifier (String), fileName (String)"
+                ))
+                return
+            }
+
+            if !bookmarkHandler.bookmarkExists(identifier: identifier) {
+                result(FlutterError(
+                    code: "BOOKMARK_NOT_FOUND",
+                    message: "Bookmark with identifier '\(identifier)' not found",
+                    details: nil
+                ))
+                return
+            }
+
+            result(bookmarkHandler.deleteFile(bookmarkId: identifier, fileName: fileName))
+
+        case "fileExists":
+            guard let args = call.arguments as? [String: Any],
+                  let identifier = args["identifier"] as? String,
+                  let fileName = args["fileName"] as? String else {
+                result(FlutterError(
+                    code: "INVALID_ARGUMENT",
+                    message: "Invalid arguments for fileExists",
+                    details: "Required arguments: identifier (String), fileName (String)"
+                ))
+                return
+            }
+
+            if !bookmarkHandler.bookmarkExists(identifier: identifier) {
+                result(false)
+                return
+            }
+
+            result(bookmarkHandler.fileExists(bookmarkId: identifier, fileName: fileName))
+
+        // MARK: - Permission Management
         case "hasWritePermission":
-            result(bookmarkHandler.hasWritePermission())
-            
+            guard let args = call.arguments as? [String: Any],
+                  let identifier = args["identifier"] as? String else {
+                result(FlutterError(
+                    code: "INVALID_ARGUMENT",
+                    message: "Invalid arguments for hasWritePermission",
+                    details: "Required arguments: identifier (String)"
+                ))
+                return
+            }
+
+            if !bookmarkHandler.bookmarkExists(identifier: identifier) {
+                result(false)
+                return
+            }
+
+            result(bookmarkHandler.hasWritePermission(bookmarkId: identifier))
+
         case "requestWritePermission":
-            result(bookmarkHandler.hasWritePermission())
-            
+            guard let args = call.arguments as? [String: Any],
+                  let identifier = args["identifier"] as? String else {
+                result(FlutterError(
+                    code: "INVALID_ARGUMENT",
+                    message: "Invalid arguments for requestWritePermission",
+                    details: "Required arguments: identifier (String)"
+                ))
+                return
+            }
+
+            if !bookmarkHandler.bookmarkExists(identifier: identifier) {
+                result(false)
+                return
+            }
+
+            result(bookmarkHandler.hasWritePermission(bookmarkId: identifier))
+
         default:
             result(FlutterMethodNotImplemented)
         }

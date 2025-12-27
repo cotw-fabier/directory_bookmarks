@@ -30,154 +30,97 @@ class DirectoryBookmarksPlugin: FlutterPlugin, MethodCallHandler, ActivityAware 
 
     override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
         when (call.method) {
-            "saveDirectoryBookmark" -> {
-                val path = call.argument<String>("path")
-                if (path == null) {
-                    result.error("INVALID_ARGUMENTS", "Path is required", null)
-                    return
-                }
-                
-                try {
-                    val file = File(path)
-                    if (!file.exists() || !file.isDirectory) {
-                        result.error("INVALID_PATH", "Path does not exist or is not a directory", null)
-                        return
-                    }
-
-                    preferences.edit().putString("bookmarked_directory", path).apply()
-                    result.success(true)
-                } catch (e: Exception) {
-                    result.error("SAVE_ERROR", e.message, null)
-                }
+            // New multi-bookmark API methods - all return UNSUPPORTED_PLATFORM
+            "createBookmark" -> {
+                result.error(
+                    "UNSUPPORTED_PLATFORM",
+                    "Android platform is not fully supported yet. Multi-bookmark functionality is planned for future releases.",
+                    null
+                )
             }
-            "resolveDirectoryBookmark" -> {
-                val path = preferences.getString("bookmarked_directory", null)
-                if (path == null) {
-                    result.success(null)
-                    return
-                }
-
-                try {
-                    val file = File(path)
-                    if (!file.exists() || !file.isDirectory) {
-                        result.success(null)
-                        return
-                    }
-
-                    result.success(mapOf(
-                        "path" to path,
-                        "createdAt" to Date().toString(),
-                        "metadata" to mapOf<String, Any>()
-                    ))
-                } catch (e: Exception) {
-                    result.error("RESOLVE_ERROR", e.message, null)
-                }
+            "listBookmarks" -> {
+                result.error(
+                    "UNSUPPORTED_PLATFORM",
+                    "Android platform is not fully supported yet. Multi-bookmark functionality is planned for future releases.",
+                    null
+                )
+            }
+            "getBookmark" -> {
+                result.error(
+                    "UNSUPPORTED_PLATFORM",
+                    "Android platform is not fully supported yet. Multi-bookmark functionality is planned for future releases.",
+                    null
+                )
+            }
+            "bookmarkExists" -> {
+                result.error(
+                    "UNSUPPORTED_PLATFORM",
+                    "Android platform is not fully supported yet. Multi-bookmark functionality is planned for future releases.",
+                    null
+                )
+            }
+            "deleteBookmark" -> {
+                result.error(
+                    "UNSUPPORTED_PLATFORM",
+                    "Android platform is not fully supported yet. Multi-bookmark functionality is planned for future releases.",
+                    null
+                )
+            }
+            "updateBookmarkMetadata" -> {
+                result.error(
+                    "UNSUPPORTED_PLATFORM",
+                    "Android platform is not fully supported yet. Multi-bookmark functionality is planned for future releases.",
+                    null
+                )
             }
             "saveFile" -> {
-                val fileName = call.argument<String>("fileName")
-                val data = call.argument<ByteArray>("data")
-                if (fileName == null || data == null) {
-                    result.error("INVALID_ARGUMENTS", "fileName and data are required", null)
-                    return
-                }
-
-                try {
-                    val dirPath = preferences.getString("bookmarked_directory", null)
-                    if (dirPath == null) {
-                        result.error("NO_DIRECTORY", "No bookmarked directory found", null)
-                        return
-                    }
-
-                    val dir = File(dirPath)
-                    if (!dir.exists() || !dir.isDirectory) {
-                        result.error("INVALID_DIRECTORY", "Bookmarked directory is invalid", null)
-                        return
-                    }
-
-                    val file = File(dir, fileName)
-                    file.writeBytes(data)
-                    result.success(true)
-                } catch (e: Exception) {
-                    result.error("SAVE_ERROR", e.message, null)
-                }
+                result.error(
+                    "UNSUPPORTED_PLATFORM",
+                    "Android platform is not fully supported yet. Multi-bookmark functionality is planned for future releases.",
+                    null
+                )
             }
             "readFile" -> {
-                val fileName = call.argument<String>("fileName")
-                if (fileName == null) {
-                    result.error("INVALID_ARGUMENTS", "fileName is required", null)
-                    return
-                }
-
-                try {
-                    val dirPath = preferences.getString("bookmarked_directory", null)
-                    if (dirPath == null) {
-                        result.error("NO_DIRECTORY", "No bookmarked directory found", null)
-                        return
-                    }
-
-                    val file = File(File(dirPath), fileName)
-                    if (!file.exists() || !file.isFile) {
-                        result.error("FILE_NOT_FOUND", "File does not exist", null)
-                        return
-                    }
-
-                    result.success(file.readBytes())
-                } catch (e: Exception) {
-                    result.error("READ_ERROR", e.message, null)
-                }
+                result.error(
+                    "UNSUPPORTED_PLATFORM",
+                    "Android platform is not fully supported yet. Multi-bookmark functionality is planned for future releases.",
+                    null
+                )
             }
             "listFiles" -> {
-                try {
-                    val dirPath = preferences.getString("bookmarked_directory", null)
-                    if (dirPath == null) {
-                        result.error("NO_DIRECTORY", "No bookmarked directory found", null)
-                        return
-                    }
-
-                    val dir = File(dirPath)
-                    if (!dir.exists() || !dir.isDirectory) {
-                        result.error("INVALID_DIRECTORY", "Bookmarked directory is invalid", null)
-                        return
-                    }
-
-                    val files = dir.listFiles()
-                    if (files == null) {
-                        result.success(listOf<String>())
-                        return
-                    }
-
-                    result.success(files.filter { it.isFile }.map { it.name })
-                } catch (e: Exception) {
-                    result.error("LIST_ERROR", e.message, null)
-                }
+                result.error(
+                    "UNSUPPORTED_PLATFORM",
+                    "Android platform is not fully supported yet. Multi-bookmark functionality is planned for future releases.",
+                    null
+                )
+            }
+            "deleteFile" -> {
+                result.error(
+                    "UNSUPPORTED_PLATFORM",
+                    "Android platform is not fully supported yet. Multi-bookmark functionality is planned for future releases.",
+                    null
+                )
+            }
+            "fileExists" -> {
+                result.error(
+                    "UNSUPPORTED_PLATFORM",
+                    "Android platform is not fully supported yet. Multi-bookmark functionality is planned for future releases.",
+                    null
+                )
             }
             "hasWritePermission" -> {
-                try {
-                    val dirPath = preferences.getString("bookmarked_directory", null)
-                    if (dirPath == null) {
-                        result.success(false)
-                        return
-                    }
-
-                    val dir = File(dirPath)
-                    result.success(dir.exists() && dir.isDirectory && dir.canWrite())
-                } catch (e: Exception) {
-                    result.error("PERMISSION_ERROR", e.message, null)
-                }
+                result.error(
+                    "UNSUPPORTED_PLATFORM",
+                    "Android platform is not fully supported yet. Multi-bookmark functionality is planned for future releases.",
+                    null
+                )
             }
             "requestWritePermission" -> {
-                try {
-                    val dirPath = preferences.getString("bookmarked_directory", null)
-                    if (dirPath == null) {
-                        result.success(false)
-                        return
-                    }
-
-                    val dir = File(dirPath)
-                    result.success(dir.exists() && dir.isDirectory && dir.canWrite())
-                } catch (e: Exception) {
-                    result.error("PERMISSION_ERROR", e.message, null)
-                }
+                result.error(
+                    "UNSUPPORTED_PLATFORM",
+                    "Android platform is not fully supported yet. Multi-bookmark functionality is planned for future releases.",
+                    null
+                )
             }
             else -> {
                 result.notImplemented()
